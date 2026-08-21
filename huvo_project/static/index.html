@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Northstar Homes — Northstar One</title>
+    <style>
+      :root {
+        --ink: #1c2430;
+        --muted: #5c6777;
+        --paper: #f6f1e8;
+        --card: #fffdf8;
+        --line: #e4d9c8;
+        --accent: #8a5a2b;
+        --accent-dark: #6d4520;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "Nirmala UI", sans-serif;
+        background: var(--paper);
+        color: var(--ink);
+      }
+      header {
+        padding: 1.25rem 1.5rem 0.5rem;
+        max-width: 880px;
+        margin: 0 auto;
+      }
+      header p { margin: 0.2rem 0 0; color: var(--muted); }
+      .layout {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 1rem 1.5rem 2rem;
+        display: grid;
+        gap: 1rem;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 1rem;
+      }
+      #log {
+        min-height: 320px;
+        max-height: 420px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+      }
+      .bubble {
+        max-width: 80%;
+        padding: 0.7rem 0.9rem;
+        border-radius: 12px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+      }
+      .user { align-self: flex-end; background: #efe4d4; }
+      .bot { align-self: flex-start; background: #f3eee6; }
+      form { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+      input[type="text"] {
+        flex: 1;
+        padding: 0.7rem 0.8rem;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font: inherit;
+      }
+      button {
+        background: var(--accent);
+        color: white;
+        border: 0;
+        border-radius: 8px;
+        padding: 0.7rem 1rem;
+        font: inherit;
+        cursor: pointer;
+      }
+      button.secondary { background: var(--ink); }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        font-size: 0.85rem;
+      }
+      .error { color: #8b1e1e; }
+      .hint { display: block; margin-top: 0.6rem; color: var(--muted); font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Northstar Homes</h1>
+      <p>Project Northstar One · Sector 79, Gurugram · 2 BHK &amp; 3 BHK</p>
+    </header>
+    <div class="layout">
+      <section class="card">
+        <div id="log"></div>
+        <form id="chat-form">
+          <input
+            id="message"
+            type="text"
+            autocomplete="off"
+            placeholder="Type in English, Hindi, or Hinglish"
+          />
+          <button type="submit" id="send">Send</button>
+          <button type="button" class="secondary" id="end">End</button>
+          <button type="button" class="secondary" id="new-chat" style="display: none;">New Conversation</button>
+        </form>
+        <label class="hint">
+          <input type="checkbox" id="voice" />
+          Use the same prompt in voice mode (speakable turns)
+        </label>
+        <p id="status" class="error"></p>
+      </section>
+    </div>
+    <script>
+      let sessionId = crypto.randomUUID();
+      const log = document.getElementById("log");
+      const form = document.getElementById("chat-form");
+      const input = document.getElementById("message");
+      const send = document.getElementById("send");
+      const endBtn = document.getElementById("end");
+      const newChatBtn = document.getElementById("new-chat");
+      const status = document.getElementById("status");
+      const voice = document.getElementById("voice");
+      let ended = false;
+
+      function formatError(data) {
+        if (!data) return "";
+        if (typeof data.detail === "string") return data.detail;
+        if (typeof data === "string") return data;
+        return JSON.stringify(data.detail || data);
+      }
+
+      async function readJson(response) {
+        const raw = await response.text();
+        try {
+          return JSON.parse(raw);
+        } catch {
+          throw new Error(raw.slice(0, 240) || "Request failed");
+        }
+      }
+
+      function addBubble(text, who) {
+        const div = document.createElement("div");
+        div.className = "bubble " + (who || "bot");
+        div.textContent = text;
+        log.appendChild(div);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function resetChat() {
+        log.innerHTML = "";
+        sessionId = crypto.randomUUID();
+        ended = false;
+        input.value = "";
+        status.textContent = "";
+        send.style.display = "";
+        endBtn.style.display = "";
+        newChatBtn.style.display = "none";
+        send.disabled = false;
+        endBtn.disabled = false;
+        input.disabled = false;
+        addBubble("Namaste, I am from Northstar Homes.");
+        input.focus();
+      }
+
+      addBubble(
+        "Namaste, I am from Northstar Homes."
+      );
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (ended) return;
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = "";
+        addBubble(text, "user");
+        status.textContent = "";
+        send.disabled = true;
+        try {
+          const response = await fetch("/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: sessionId,
+              message: text,
+              channel: voice.checked ? "voice" : "chat",
+            }),
+          });
+          const data = await readJson(response);
+          if (!response.ok) {
+            throw new Error(formatError(data) || "Chat failed");
+          }
+          addBubble(data.reply, "bot");
+          if (data.ended) {
+            ended = true;
+            send.disabled = true;
+          }
+        } catch (err) {
+          status.textContent = err.message;
+        } finally {
+          if (!ended) send.disabled = false;
+          input.focus();
+        }
+      });
+
+      endBtn.addEventListener("click", async () => {
+        status.textContent = "";
+        endBtn.disabled = true;
+        try {
+          const response = await fetch("/end", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId }),
+          });
+          const data = await readJson(response);
+          if (!response.ok) {
+            throw new Error(formatError(data) || "End failed");
+          }
+          addBubble(data.message || "Thank you. Conversation ended.", "bot");
+          ended = true;
+          send.disabled = true;
+          input.disabled = true;
+          send.style.display = "none";
+          endBtn.style.display = "none";
+          newChatBtn.style.display = "";
+        } catch (err) {
+          status.textContent = err.message;
+          endBtn.disabled = false;
+        }
+      });
+
+      newChatBtn.addEventListener("click", () => {
+        resetChat();
+      });
+    </script>
+  </body>
+</html>
